@@ -314,6 +314,29 @@ const CalendarClock = Ico([/*#__PURE__*/React.createElement("path", {
   key: "4",
   d: "M17.5 16v1.5l1 1"
 })]);
+const ClipboardList = Ico([/*#__PURE__*/React.createElement("rect", {
+  key: "1",
+  x: "8",
+  y: "2",
+  width: "8",
+  height: "4",
+  rx: "1"
+}), /*#__PURE__*/React.createElement("path", {
+  key: "2",
+  d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+}), /*#__PURE__*/React.createElement("path", {
+  key: "3",
+  d: "M12 11h4"
+}), /*#__PURE__*/React.createElement("path", {
+  key: "4",
+  d: "M12 16h4"
+}), /*#__PURE__*/React.createElement("path", {
+  key: "5",
+  d: "M8 11h.01"
+}), /*#__PURE__*/React.createElement("path", {
+  key: "6",
+  d: "M8 16h.01"
+})]);
 
 /* ------------------------------- paleta / fonte ------------------------------ */
 const FONTE = "'Poppins', system-ui, sans-serif";
@@ -642,6 +665,10 @@ function App() {
     nome: "Painel",
     icon: LayoutDashboard
   }, {
+    id: "doadores",
+    nome: "Doadores",
+    icon: ClipboardList
+  }, {
     id: "membros",
     nome: "Membros",
     icon: Users
@@ -808,6 +835,10 @@ function App() {
     membros: membros,
     movs: movs,
     irPara: setAba
+  }) : aba === "doadores" ? /*#__PURE__*/React.createElement(Doadores, {
+    membros: membros,
+    movs: movs,
+    onMov: opMov
   }) : aba === "membros" ? /*#__PURE__*/React.createElement(Membros, {
     membros: membros,
     onSave: opMembro,
@@ -1015,7 +1046,6 @@ function Painel({
   const estoque = useMemo(() => {
     const mapa = {};
     for (const m of movs) {
-      if (m.tipo === "repasse") continue;
       const chave = (m.formula || "Não especificada").toString().trim();
       if (!mapa[chave]) mapa[chave] = {
         formula: chave,
@@ -1045,7 +1075,7 @@ function Painel({
   }, /*#__PURE__*/React.createElement(Metrica, {
     destaque: true,
     icon: Package,
-    rotulo: "Latas em estoque",
+    rotulo: "Latas disponíveis",
     valor: totalEstoque
   }), /*#__PURE__*/React.createElement(Metrica, {
     cor: c.in,
@@ -2501,6 +2531,457 @@ function ConfirmarOferta({
     guardar: salvar,
     desabilitado: desab,
     rotuloGuardar: criandoNovo ? "Cadastrar e receber" : "Receber no estoque",
+    corGuardar: c.in
+  }));
+}
+
+/* ================================ DOADORES ================================= */
+function saldosPorDoador(movs) {
+  const mapa = {}; // id -> { formula -> { qtd, vencs:[] } }
+  const push = (id, formula, dq, venc) => {
+    if (!id) return;
+    const f = (formula || "Não especificada").toString().trim();
+    if (!mapa[id]) mapa[id] = {};
+    if (!mapa[id][f]) mapa[id][f] = {
+      qtd: 0,
+      vencs: []
+    };
+    mapa[id][f].qtd += dq;
+    if (venc) mapa[id][f].vencs.push(String(venc).slice(0, 10));
+  };
+  for (const m of movs) {
+    if (m.tipo === "recebimento") push(m.membroId, m.formula, Number(m.quantidade), m.validade);else if (m.tipo === "repasse") push(m.doadorId, m.formula, -Number(m.quantidade), null);
+  }
+  return mapa;
+}
+function Doadores({
+  membros,
+  movs,
+  onMov
+}) {
+  const [busca, setBusca] = useState("");
+  const [soComLatas, setSoComLatas] = useState(true);
+  const [doar, setDoar] = useState(null);
+  const [add, setAdd] = useState(null);
+  const saldos = useMemo(() => saldosPorDoador(movs), [movs]);
+  const porId = useMemo(() => {
+    const o = {};
+    for (const m of membros) o[m.id] = m;
+    return o;
+  }, [membros]);
+  const ids = {};
+  Object.keys(saldos).forEach(id => {
+    ids[id] = true;
+  });
+  membros.forEach(m => {
+    if (m.tipo === "Doador" || m.tipo === "Ambos") ids[m.id] = true;
+  });
+  let lista = Object.keys(ids).map(id => {
+    const m = porId[id] || {
+      id,
+      nome: "(sem cadastro)",
+      tipo: "Doador"
+    };
+    const linhas = Object.keys(saldos[id] || {}).map(formula => {
+      const v = saldos[id][formula];
+      return {
+        formula,
+        qtd: v.qtd,
+        venc: v.vencs.filter(Boolean).sort()[0] || ""
+      };
+    }).filter(l => l.qtd !== 0).sort((a, b) => b.qtd - a.qtd);
+    const total = linhas.reduce((s, l) => s + Math.max(0, l.qtd), 0);
+    return {
+      m,
+      linhas,
+      total
+    };
+  });
+  const q = busca.toLowerCase();
+  lista = lista.filter(d => soComLatas ? d.total > 0 : true).filter(d => (d.m.nome + " " + (d.m.contato || "") + " " + (d.m.cidade || "") + " " + (d.m.bairro || "") + " " + d.linhas.map(l => l.formula).join(" ")).toLowerCase().includes(q)).sort((a, b) => a.m.nome.localeCompare(b.m.nome));
+  const totalGeral = lista.reduce((s, d) => s + d.total, 0);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      marginBottom: 14,
+      flexWrap: "wrap",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "relative",
+      flex: 1,
+      minWidth: 200
+    }
+  }, /*#__PURE__*/React.createElement(Search, {
+    size: 16,
+    color: c.muted,
+    style: {
+      position: "absolute",
+      left: 12,
+      top: 12
+    }
+  }), /*#__PURE__*/React.createElement("input", {
+    value: busca,
+    onChange: e => setBusca(e.target.value),
+    placeholder: "Buscar por nome, cidade ou fórmula",
+    style: {
+      ...inputBase,
+      paddingLeft: 36,
+      width: "100%"
+    }
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setSoComLatas(v => !v),
+    style: {
+      ...btnMini,
+      background: soComLatas ? c.plum : "#fff",
+      color: soComLatas ? "#fff" : c.ink,
+      borderColor: soComLatas ? c.plum : c.line
+    }
+  }, soComLatas ? "Só com latas" : "Todas")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: c.plum,
+      color: c.cream,
+      borderRadius: 14,
+      padding: "12px 16px",
+      marginBottom: 16,
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement(ClipboardList, {
+    size: 18,
+    color: c.pink
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13.5
+    }
+  }, "Disponível com as doadoras: ", /*#__PURE__*/React.createElement("strong", {
+    style: {
+      fontSize: 16
+    }
+  }, totalGeral), " lata(s)")), lista.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: c.card,
+      border: `1px solid ${c.line}`,
+      borderRadius: 16,
+      padding: 40,
+      textAlign: "center",
+      color: c.muted
+    }
+  }, "Nenhuma doadora ", soComLatas ? "com latas disponíveis" : "cadastrada", " no momento.") : /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))",
+      gap: 12
+    }
+  }, lista.map(({
+    m,
+    linhas,
+    total
+  }) => /*#__PURE__*/React.createElement("div", {
+    key: m.id,
+    style: {
+      background: c.card,
+      border: `1px solid ${c.line}`,
+      borderRadius: 14,
+      padding: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "start",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      fontSize: 15
+    }
+  }, m.nome), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12.5,
+      fontWeight: 800,
+      color: c.plum,
+      whiteSpace: "nowrap"
+    }
+  }, total, " lata", total !== 1 ? "s" : "")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 5,
+      fontSize: 12.5,
+      color: c.muted,
+      display: "flex",
+      flexDirection: "column",
+      gap: 3
+    }
+  }, m.contato && /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "flex",
+      gap: 6,
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement(Phone, {
+    size: 12
+  }), " ", m.contato), (m.cidade || m.bairro || m.estado) && /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "flex",
+      gap: 6,
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement(MapPin, {
+    size: 12
+  }), " ", [m.bairro, m.cidade, m.estado].filter(Boolean).join(", "))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10,
+      display: "flex",
+      flexDirection: "column",
+      gap: 5
+    }
+  }, linhas.length === 0 ? /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      color: c.muted
+    }
+  }, "Sem latas registradas.") : linhas.map(l => /*#__PURE__*/React.createElement("div", {
+    key: l.formula,
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 8,
+      fontSize: 13.5,
+      borderBottom: `1px solid ${c.line}`,
+      paddingBottom: 5
+    }
+  }, /*#__PURE__*/React.createElement("span", null, l.formula, l.venc ? /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: c.muted
+    }
+  }, " · venc. ", fmtData(l.venc)) : null), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      color: l.qtd < 0 ? c.out : c.in
+    }
+  }, l.qtd)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginTop: 12,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setDoar({
+      m,
+      linhas
+    }),
+    disabled: total <= 0,
+    style: {
+      ...btnPrimario,
+      background: total <= 0 ? "#CDB8C2" : c.out,
+      padding: "8px 12px",
+      cursor: total <= 0 ? "not-allowed" : "pointer"
+    }
+  }, /*#__PURE__*/React.createElement(ArrowUpCircle, {
+    size: 14
+  }), " Registrar doação"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAdd(m),
+    style: btnMini
+  }, /*#__PURE__*/React.createElement(Plus, {
+    size: 13
+  }), " Latas"))))), doar && /*#__PURE__*/React.createElement(RegistrarDoacao, {
+    donor: doar.m,
+    linhas: doar.linhas,
+    membros: membros,
+    fechar: () => setDoar(null),
+    onMov: mv => {
+      onMov(mv);
+      setDoar(null);
+    }
+  }), add && /*#__PURE__*/React.createElement(AddLatas, {
+    donor: add,
+    fechar: () => setAdd(null),
+    onMov: mv => {
+      onMov(mv);
+      setAdd(null);
+    }
+  }));
+}
+function RegistrarDoacao({
+  donor,
+  linhas,
+  membros,
+  fechar,
+  onMov
+}) {
+  const disp = linhas.filter(l => l.qtd > 0);
+  const [formula, setFormula] = useState(disp[0] ? disp[0].formula : "");
+  const [quantidade, setQuantidade] = useState(1);
+  const [recebedorId, setRecebedorId] = useState("");
+  const [data, setData] = useState(hoje());
+  const maxQ = (disp.find(l => l.formula === formula) || {}).qtd || 0;
+  const opcF = disp.map(l => ({
+    valor: l.formula,
+    rotulo: `${l.formula} (${l.qtd} disp.)`
+  }));
+  const opcR = [{
+    valor: "",
+    rotulo: "— não informar"
+  }, ...membros.filter(m => m.tipo === "Recebedor" || m.tipo === "Ambos").sort((a, b) => a.nome.localeCompare(b.nome)).map(m => ({
+    valor: m.id,
+    rotulo: m.nome
+  }))];
+  const desab = !formula || !quantidade || Number(quantidade) <= 0;
+  const salvar = () => {
+    if (desab) return;
+    onMov({
+      id: uid(),
+      tipo: "repasse",
+      membroId: "",
+      doadorId: donor.id,
+      recebedorId,
+      formula,
+      quantidade: Number(quantidade),
+      validade: "",
+      data,
+      obs: ""
+    });
+  };
+  return /*#__PURE__*/React.createElement(Modal, {
+    titulo: `Registrar doação — ${donor.nome}`,
+    fechar: fechar,
+    corTopo: c.out
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: c.muted,
+      lineHeight: 1.5
+    }
+  }, "Baixa nas latas desta doadora. Se informar o recebedor, fica registrado como repasse."), /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Fórmula *"
+  }, /*#__PURE__*/React.createElement(Select, {
+    valor: formula,
+    onChange: setFormula,
+    opcoes: opcF
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement(Campo, {
+    rotulo: `Quantidade * (disp.: ${maxQ})`,
+    flex: true
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: 1,
+    max: maxQ,
+    value: quantidade,
+    onChange: e => setQuantidade(e.target.value),
+    style: inputBase
+  })), /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Data *",
+    flex: true
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: data,
+    onChange: e => setData(e.target.value),
+    style: inputBase
+  }))), /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Para (recebedor, opcional)"
+  }, /*#__PURE__*/React.createElement(Select, {
+    valor: recebedorId,
+    onChange: setRecebedorId,
+    opcoes: opcR
+  })), Number(quantidade) > maxQ && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: c.amber
+    }
+  }, "Atenção: acima do disponível (", maxQ, ")."), /*#__PURE__*/React.createElement(BotoesModal, {
+    fechar: fechar,
+    guardar: salvar,
+    desabilitado: desab,
+    rotuloGuardar: "Registrar baixa",
+    corGuardar: c.out
+  }));
+}
+function AddLatas({
+  donor,
+  fechar,
+  onMov
+}) {
+  const [formula, setFormula] = useState("");
+  const [quantidade, setQuantidade] = useState(1);
+  const [validade, setValidade] = useState("");
+  const [data, setData] = useState(hoje());
+  const desab = !formula.trim() || !quantidade;
+  const salvar = () => {
+    if (desab) return;
+    onMov({
+      id: uid(),
+      tipo: "recebimento",
+      membroId: donor.id,
+      doadorId: "",
+      recebedorId: "",
+      formula: formula.trim(),
+      quantidade: Number(quantidade),
+      validade,
+      data,
+      obs: ""
+    });
+  };
+  return /*#__PURE__*/React.createElement(Modal, {
+    titulo: `Adicionar latas — ${donor.nome}`,
+    fechar: fechar,
+    corTopo: c.in
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: c.muted,
+      lineHeight: 1.5
+    }
+  }, "Registra latas que esta doadora passou a ter disponíveis."), /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Fórmula *"
+  }, /*#__PURE__*/React.createElement(Select, {
+    valor: formula,
+    onChange: setFormula,
+    opcoes: FORMULAS_SUGERIDAS,
+    placeholder: "Selecione a fórmula"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Quantidade (latas) *",
+    flex: true
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: 1,
+    value: quantidade,
+    onChange: e => setQuantidade(e.target.value),
+    style: inputBase
+  })), /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Validade",
+    flex: true
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: validade,
+    onChange: e => setValidade(e.target.value),
+    style: inputBase
+  }))), /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Data *"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: data,
+    onChange: e => setData(e.target.value),
+    style: inputBase
+  })), /*#__PURE__*/React.createElement(BotoesModal, {
+    fechar: fechar,
+    guardar: salvar,
+    desabilitado: desab,
+    rotuloGuardar: "Adicionar",
     corGuardar: c.in
   }));
 }
