@@ -1046,6 +1046,7 @@ function Painel({
   const estoque = useMemo(() => {
     const mapa = {};
     for (const m of movs) {
+      if (m.tipo === "entrega") continue; // confirmação de família não baixa do disponível (evita subtrair 2x)
       const chave = (m.formula || "Não especificada").toString().trim();
       if (!mapa[chave]) mapa[chave] = {
         formula: chave,
@@ -1083,14 +1084,9 @@ function Painel({
     rotulo: "Recebidas",
     valor: recebidas
   }), /*#__PURE__*/React.createElement(Metrica, {
-    cor: c.out,
-    icon: ArrowUpCircle,
-    rotulo: "Entregues",
-    valor: entregues
-  }), /*#__PURE__*/React.createElement(Metrica, {
     cor: c.link,
     icon: ArrowLeftRight,
-    rotulo: "Repasses diretos",
+    rotulo: "Doações feitas",
     valor: repasses
   }), /*#__PURE__*/React.createElement(Metrica, {
     cor: c.amber,
