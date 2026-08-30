@@ -195,7 +195,15 @@ function Rodape() {
       fontWeight: 700,
       color: c.plum
     }
-  }, "Conexão Família APLV"), /*#__PURE__*/React.createElement("div", null, "Registro de doações de fórmula para famílias com alergia à proteína do leite de vaca (APLV)."), /*#__PURE__*/React.createElement("div", null, "@conexaofamilia.aplv"));
+  }, "Conexão Família APLV"), /*#__PURE__*/React.createElement("div", null, "Registro de doações de fórmula para famílias com alergia à proteína do leite de vaca (APLV)."), /*#__PURE__*/React.createElement("div", null, "@conexaofamilia.aplv"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 5
+    }
+  }, "Criado e desenvolvido por ", /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: c.plum
+    }
+  }, "Patricia Aydar")));
 }
 function Escolha({
   onEscolher
@@ -365,7 +373,7 @@ function Formulario({
     ...f,
     [k]: v
   });
-  const podeEnviar = f.nome.trim() && f.contato.trim() && f.formula.trim() && f.quantidade;
+  const podeEnviar = f.nome.trim() && f.contato.trim() && f.deQuem.trim() && f.formula.trim() && f.quantidade;
   const submeter = async () => {
     if (!podeEnviar) return;
     setEnviando(true);
@@ -443,10 +451,17 @@ function Formulario({
     onChange: e => set("nome", e.target.value),
     style: inputBase
   })), /*#__PURE__*/React.createElement(Campo, {
-    rotulo: "Telefone / WhatsApp *"
+    rotulo: "Seu telefone / WhatsApp *"
   }, /*#__PURE__*/React.createElement("input", {
     value: f.contato,
     onChange: e => set("contato", e.target.value),
+    style: inputBase,
+    placeholder: "(19) 9...."
+  })), /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Telefone da DOADORA (de quem você recebeu) *"
+  }, /*#__PURE__*/React.createElement("input", {
+    value: f.deQuem,
+    onChange: e => set("deQuem", e.target.value),
     style: inputBase,
     placeholder: "(19) 9...."
   })), /*#__PURE__*/React.createElement("div", {
@@ -505,13 +520,6 @@ function Formulario({
     onChange: e => set("data", e.target.value),
     style: inputBase
   }))), /*#__PURE__*/React.createElement(Campo, {
-    rotulo: "De quem recebeu (opcional)"
-  }, /*#__PURE__*/React.createElement("input", {
-    value: f.deQuem,
-    onChange: e => set("deQuem", e.target.value),
-    style: inputBase,
-    placeholder: "Nome do doador, ONG, etc."
-  })), /*#__PURE__*/React.createElement(Campo, {
     rotulo: "Observações (opcional)"
   }, /*#__PURE__*/React.createElement("textarea", {
     rows: 2,
