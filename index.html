@@ -1976,7 +1976,7 @@ function Movimentacoes({
     desabilitado: (form.tipo === "repasse" ? !form.doadorId || !form.recebedorId : !form.membroId) || !form.formula.trim() || !form.quantidade,
     corGuardar: corMov(form)
   })), confirmar && /*#__PURE__*/React.createElement(Modal, {
-    titulo: "Excluir movimentação",
+    titulo: confirmar.tipo === "repasse" ? "Devolver ao estoque" : "Excluir movimentação",
     fechar: () => setConfirmar(null),
     estreito: true
   }, /*#__PURE__*/React.createElement("p", {
@@ -1984,11 +1984,12 @@ function Movimentacoes({
       fontSize: 14,
       lineHeight: 1.5
     }
-  }, "Excluir o registro de ", /*#__PURE__*/React.createElement("strong", null, confirmar.quantidade, "× ", confirmar.formula), "? O estoque será recalculado."), /*#__PURE__*/React.createElement(BotoesModal, {
+  }, confirmar.tipo === "repasse" ? /*#__PURE__*/React.createElement(React.Fragment, null, "Cancelar esta doação de ", /*#__PURE__*/React.createElement("strong", null, confirmar.quantidade, "× ", confirmar.formula), "? As latas ", /*#__PURE__*/React.createElement("strong", null, "voltam para o estoque da doadora"), " (use quando a família não retirou).") : /*#__PURE__*/React.createElement(React.Fragment, null, "Excluir o registro de ", /*#__PURE__*/React.createElement("strong", null, confirmar.quantidade, "× ", confirmar.formula), "? O estoque será recalculado.")), /*#__PURE__*/React.createElement(BotoesModal, {
     fechar: () => setConfirmar(null),
     guardar: () => excluir(confirmar.id),
-    rotuloGuardar: "Excluir",
-    perigo: true
+    rotuloGuardar: confirmar.tipo === "repasse" ? "Devolver ao estoque" : "Excluir",
+    corGuardar: confirmar.tipo === "repasse" ? c.in : undefined,
+    perigo: confirmar.tipo !== "repasse"
   })), /*#__PURE__*/React.createElement(DatalistFormulas, null));
 }
 
@@ -2105,26 +2106,22 @@ function ConfirmarInformado({
   fechar,
   onConfirmar
 }) {
-  const NOVO = "__novo__";
   const EXTERNA = "__externa__";
-  const telItem = soDigitos(item.contato);
-  const match = telItem ? membros.find(m => {
-    const t = soDigitos(m.contato);
-    return t && (t === telItem || t.length >= 8 && telItem.length >= 8 && t.slice(-8) === telItem.slice(-8));
-  }) : null;
-  const [recebedorId, setRecebedorId] = useState(match ? match.id : NOVO);
-  const [nomeNovo, setNomeNovo] = useState(item.nome || "");
-  const [contatoNovo, setContatoNovo] = useState(item.contato || "");
-  const [formula, setFormula] = useState(item.formula || "");
-  const [quantidade, setQuantidade] = useState(item.quantidade || 1);
-  const [data, setData] = useState(String(item.data || hoje()).slice(0, 10));
   const telDoadora = soDigitos(item.deQuem);
   const matchDoadora = telDoadora ? membros.find(m => {
     const t = soDigitos(m.contato);
     return t && (t === telDoadora || t.length >= 8 && telDoadora.length >= 8 && t.slice(-8) === telDoadora.slice(-8));
   }) : null;
+  const telReceb = soDigitos(item.contato);
+  const matchReceb = telReceb ? membros.find(m => {
+    const t = soDigitos(m.contato);
+    return t && (t === telReceb || t.length >= 8 && telReceb.length >= 8 && t.slice(-8) === telReceb.slice(-8));
+  }) : null;
+  const [darBaixa, setDarBaixa] = useState(false);
   const [doadoraId, setDoadoraId] = useState(matchDoadora ? matchDoadora.id : "");
-  const criandoNovo = recebedorId === NOVO;
+  const [formula, setFormula] = useState(item.formula || "");
+  const [quantidade, setQuantidade] = useState(item.quantidade || 1);
+  const [data, setData] = useState(String(item.data || hoje()).slice(0, 10));
   const saldos = saldosPorDoador(movs);
   const dispDe = id => ((saldos[id] || {})[formula] || {}).qtd || 0;
   const doadores = membros.filter(m => m.tipo === "Doador" || m.tipo === "Ambos").sort((a, b) => a.nome.localeCompare(b.nome));
@@ -2135,56 +2132,28 @@ function ConfirmarInformado({
     valor: EXTERNA,
     rotulo: "— externa (não abater)"
   }];
-  const opcReceb = [...membros.map(m => ({
-    valor: m.id,
-    rotulo: `${m.nome}${m.contato ? " · " + m.contato : ""}`
-  })), {
-    valor: NOVO,
-    rotulo: "➕ Cadastrar nova família"
-  }];
-  const abate = doadoraId && doadoraId !== EXTERNA;
-  const desab = !formula.trim() || !quantidade || (criandoNovo ? !nomeNovo.trim() : !recebedorId) || !doadoraId;
+  const abate = darBaixa && doadoraId && doadoraId !== EXTERNA;
+  const desab = darBaixa && (!formula.trim() || !quantidade || !doadoraId);
   const salvar = () => {
     if (desab) return;
-    let recId,
-      novoMembro = null;
-    if (criandoNovo) {
-      recId = uid();
-      novoMembro = {
-        id: recId,
-        nome: nomeNovo.trim(),
-        contato: contatoNovo,
-        bairro: item.bairro || "",
-        cidade: item.cidade || "",
-        estado: item.estado || "",
-        tipo: "Recebedor",
-        crianca: "",
-        formula: formula.trim(),
-        obs: "",
-        criadoEm: hoje()
-      };
-    } else {
-      recId = recebedorId;
-    }
     const mov = abate ? {
       id: uid(),
       tipo: "repasse",
       membroId: "",
       doadorId: doadoraId,
-      recebedorId: recId,
+      recebedorId: matchReceb ? matchReceb.id : "",
       formula: formula.trim(),
       quantidade: Number(quantidade),
       validade: "",
       data,
-      obs: ""
+      obs: matchReceb ? "" : `Recebido por ${item.nome}`
     } : null;
     onConfirmar({
-      mov,
-      novoMembro
+      mov
     });
   };
   return /*#__PURE__*/React.createElement(Modal, {
-    titulo: "Confirmar doação recebida",
+    titulo: "Confirmar retirada",
     fechar: fechar,
     corTopo: c.in
   }, /*#__PURE__*/React.createElement("div", {
@@ -2193,47 +2162,48 @@ function ConfirmarInformado({
       color: c.muted,
       lineHeight: 1.5
     }
-  }, "Registrado por ", /*#__PURE__*/React.createElement("strong", null, item.nome), item.contato ? ` · ${item.contato}` : "", ".", item.deQuem ? matchDoadora ? /*#__PURE__*/React.createElement(React.Fragment, null, " Doadora ", /*#__PURE__*/React.createElement("strong", null, matchDoadora.nome), " vinculada pelo telefone ", /*#__PURE__*/React.createElement("strong", null, item.deQuem), " — confira e confirme para baixar.") : /*#__PURE__*/React.createElement(React.Fragment, null, " Telefone da doadora informado: ", /*#__PURE__*/React.createElement("strong", null, item.deQuem), " (não encontrei cadastro — selecione a doadora).") : /*#__PURE__*/React.createElement(React.Fragment, null, " Escolha a ", /*#__PURE__*/React.createElement("strong", null, "doadora de origem"), " para baixar do estoque dela.")), /*#__PURE__*/React.createElement(Campo, {
-    rotulo: "Família que recebeu *"
-  }, /*#__PURE__*/React.createElement(Select, {
-    valor: recebedorId,
-    onChange: setRecebedorId,
-    opcoes: opcReceb
-  })), criandoNovo && /*#__PURE__*/React.createElement("div", {
+  }, "Recebimento registrado por ", /*#__PURE__*/React.createElement("strong", null, item.nome), item.contato ? ` · ${item.contato}` : "", ".", item.deQuem ? matchDoadora ? /*#__PURE__*/React.createElement(React.Fragment, null, " Doadora: ", /*#__PURE__*/React.createElement("strong", null, matchDoadora.nome), " (tel. ", item.deQuem, ").") : /*#__PURE__*/React.createElement(React.Fragment, null, " Doadora informada pelo tel. ", /*#__PURE__*/React.createElement("strong", null, item.deQuem), ".") : null), /*#__PURE__*/React.createElement("div", {
     style: {
       background: c.inSoft,
       border: `1px solid #CFE0C7`,
       borderRadius: 12,
-      padding: "12px 14px",
+      padding: "10px 12px",
+      fontSize: 12.5,
+      color: c.ink,
+      lineHeight: 1.5
+    }
+  }, "Se você ", /*#__PURE__*/React.createElement("strong", null, "já registrou"), " esta doação em “Registrar doação”, as latas ", /*#__PURE__*/React.createElement("strong", null, "já saíram do estoque"), " — aqui é só confirmar que a retirada aconteceu (não baixa de novo)."), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      fontSize: 13.5,
+      cursor: "pointer"
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: darBaixa,
+    onChange: e => setDarBaixa(e.target.checked),
+    style: {
+      width: 18,
+      height: 18
+    }
+  }), "Ainda não registrei — ", /*#__PURE__*/React.createElement("strong", null, "dar baixa agora")), darBaixa && /*#__PURE__*/React.createElement("div", {
+    style: {
       display: "flex",
       flexDirection: "column",
-      gap: 12
+      gap: 12,
+      borderLeft: `3px solid ${c.line}`,
+      paddingLeft: 12
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 12,
-      fontWeight: 700,
-      color: c.in
-    }
-  }, "Nova família (a partir do que ela informou)"), /*#__PURE__*/React.createElement(Campo, {
-    rotulo: "Nome *"
-  }, /*#__PURE__*/React.createElement("input", {
-    value: nomeNovo,
-    onChange: e => setNomeNovo(e.target.value),
-    style: inputBase
+  }, /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Doadora de origem *"
+  }, /*#__PURE__*/React.createElement(Select, {
+    valor: doadoraId,
+    onChange: setDoadoraId,
+    opcoes: opcDoadora,
+    placeholder: "Selecione a doadora"
   })), /*#__PURE__*/React.createElement(Campo, {
-    rotulo: "Contato (telefone) *"
-  }, /*#__PURE__*/React.createElement("input", {
-    value: contatoNovo,
-    onChange: e => setContatoNovo(e.target.value),
-    style: inputBase,
-    placeholder: "(19) 9...."
-  })), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 11.5,
-      color: c.muted
-    }
-  }, "Será cadastrada como “Recebedor”.")), /*#__PURE__*/React.createElement(Campo, {
     rotulo: "Fórmula *"
   }, /*#__PURE__*/React.createElement(Select, {
     valor: formula,
@@ -2262,28 +2232,16 @@ function ConfirmarInformado({
     value: data,
     onChange: e => setData(e.target.value),
     style: inputBase
-  }))), /*#__PURE__*/React.createElement(Campo, {
-    rotulo: "Doadora de origem *"
-  }, /*#__PURE__*/React.createElement(Select, {
-    valor: doadoraId,
-    onChange: setDoadoraId,
-    opcoes: opcDoadora,
-    placeholder: "Selecione a doadora"
-  })), abate && Number(quantidade) > dispDe(doadoraId) && /*#__PURE__*/React.createElement("div", {
+  }))), abate && Number(quantidade) > dispDe(doadoraId) && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: c.amber
     }
-  }, "Atenção: acima do disponível dessa doadora (", dispDe(doadoraId), ")."), doadoraId === EXTERNA && /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 12,
-      color: c.muted
-    }
-  }, "Não vai baixar de nenhuma doadora (doação externa à rede)."), /*#__PURE__*/React.createElement(BotoesModal, {
+  }, "Atenção: acima do disponível dessa doadora (", dispDe(doadoraId), ").")), /*#__PURE__*/React.createElement(BotoesModal, {
     fechar: fechar,
     guardar: salvar,
     desabilitado: desab,
-    rotuloGuardar: abate ? "Confirmar e baixar" : "Confirmar",
+    rotuloGuardar: darBaixa ? "Baixar e confirmar" : "Confirmar retirada",
     corGuardar: c.in
   }));
 }
