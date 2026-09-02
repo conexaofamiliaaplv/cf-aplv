@@ -365,6 +365,18 @@ const FORMULAS_SUGERIDAS = ["Aminoácidos (Neocate)", "Hidrolisada (Pregomin)", 
 const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 const LOGO = typeof window !== "undefined" && window.LOGO || "";
 const soDigitos = s => String(s || "").replace(/\D/g, "");
+const telNorm = s => {
+  let d = soDigitos(s);
+  if (d.length > 11 && d.slice(0, 2) === "55") d = d.slice(2);
+  return d;
+};
+const telIgual = (a, b) => {
+  const x = telNorm(a),
+    y = telNorm(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  return x.length >= 8 && y.length >= 8 && x.slice(-8) === y.slice(-8);
+};
 
 /* --------------------------- config / cache / fila --------------------------- */
 const CFG_KEY = "aplv_cfg_v1";
@@ -2106,16 +2118,8 @@ function ConfirmarInformado({
   onConfirmar
 }) {
   const EXTERNA = "__externa__";
-  const telDoadora = soDigitos(item.deQuem);
-  const matchDoadora = telDoadora ? membros.find(m => {
-    const t = soDigitos(m.contato);
-    return t && (t === telDoadora || t.length >= 8 && telDoadora.length >= 8 && t.slice(-8) === telDoadora.slice(-8));
-  }) : null;
-  const telReceb = soDigitos(item.contato);
-  const matchReceb = telReceb ? membros.find(m => {
-    const t = soDigitos(m.contato);
-    return t && (t === telReceb || t.length >= 8 && telReceb.length >= 8 && t.slice(-8) === telReceb.slice(-8));
-  }) : null;
+  const matchDoadora = telNorm(item.deQuem) ? membros.find(m => telIgual(m.contato, item.deQuem)) : null;
+  const matchReceb = telNorm(item.contato) ? membros.find(m => telIgual(m.contato, item.contato)) : null;
   const [darBaixa, setDarBaixa] = useState(false);
   const [doadoraId, setDoadoraId] = useState(matchDoadora ? matchDoadora.id : "");
   const [formula, setFormula] = useState(item.formula || "");
@@ -2359,11 +2363,7 @@ function ConfirmarOferta({
   onConfirmar
 }) {
   const NOVO = "__novo__";
-  const telItem = soDigitos(item.contato);
-  const match = telItem ? membros.find(m => {
-    const t = soDigitos(m.contato);
-    return t && (t === telItem || t.length >= 8 && telItem.length >= 8 && t.slice(-8) === telItem.slice(-8));
-  }) : null;
+  const match = telNorm(item.contato) ? membros.find(m => telIgual(m.contato, item.contato)) : null;
   const [doadorId, setDoadorId] = useState(match ? match.id : NOVO);
   const [nomeNovo, setNomeNovo] = useState(item.nome || "");
   const [contatoNovo, setContatoNovo] = useState(item.contato || "");
@@ -3004,8 +3004,8 @@ function RegistrarDoacaoRapida({
       total: linhas.reduce((a, l) => a + l.qtd, 0)
     };
   });
-  const dq = soDigitos(q);
-  const filtrados = doadores.filter(d => !q.trim() ? d.total > 0 : dq && soDigitos(d.m.contato).includes(dq) || d.m.nome.toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.m.nome.localeCompare(b.m.nome)).slice(0, 8);
+  const dq = telNorm(q);
+  const filtrados = doadores.filter(d => !q.trim() ? d.total > 0 : dq && telNorm(d.m.contato).includes(dq) || d.m.nome.toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.m.nome.localeCompare(b.m.nome)).slice(0, 8);
   if (sel) {
     return /*#__PURE__*/React.createElement(RegistrarDoacao, {
       donor: sel.m,
