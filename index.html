@@ -1069,10 +1069,7 @@ function Painel({
   const recebidas = movs.filter(m => m.tipo === "recebimento").reduce((s, m) => s + Number(m.quantidade), 0);
   const entregues = movs.filter(m => m.tipo === "entrega").reduce((s, m) => s + Number(m.quantidade), 0);
   const repasses = movs.filter(m => m.tipo === "repasse").reduce((s, m) => s + Number(m.quantidade), 0);
-  const vencendo = movs.filter(m => m.tipo === "recebimento" && m.validade).map(m => ({
-    ...m,
-    dias: diasAte(m.validade)
-  })).filter(m => m.dias !== null && m.dias <= 45).sort((a, b) => a.dias - b.dias);
+  const vencendo = alertasValidade(movs, membros);
   const recentes = [...movs].sort((a, b) => (b.data + b.id).localeCompare(a.data + a.id)).slice(0, 6);
   const nomeDe = id => (membros.find(x => x.id === id) || {}).nome || "—";
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
@@ -1121,19 +1118,21 @@ function Painel({
     }
   }, /*#__PURE__*/React.createElement(AlertTriangle, {
     size: 17
-  }), " Validade próxima"), vencendo.map(v => /*#__PURE__*/React.createElement("div", {
-    key: v.id,
+  }), " Validade próxima"), vencendo.map((v, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
     style: {
       fontSize: 13.5,
       color: c.ink,
       display: "flex",
       justifyContent: "space-between",
+      gap: 8,
       padding: "3px 0"
     }
-  }, /*#__PURE__*/React.createElement("span", null, v.formula, " — ", v.quantidade, " lata(s)"), /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, v.donor), " — ", v.formula, " · ", v.qtd, " lata(s)"), /*#__PURE__*/React.createElement("span", {
     style: {
       color: v.dias < 0 ? c.out : c.amber,
-      fontWeight: 600
+      fontWeight: 600,
+      whiteSpace: "nowrap"
     }
   }, v.dias < 0 ? `vencida há ${-v.dias}d` : v.dias === 0 ? "vence hoje" : `vence em ${v.dias}d`, "  ·  ", fmtData(v.validade))))), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -2521,6 +2520,68 @@ function ConfirmarOferta({
 }
 
 /* ================================ DOADORES ================================= */
+function alertasValidade(movs, membros, limiteDias) {
+  const lim = limiteDias || 45;
+  const nomeDe = id => (membros.find(x => x.id === id) || {}).nome || "—";
+  const grupos = {}; // chave doadora||formula -> { donorId, formula, lots:[{qtd,validade}], doado }
+  for (const m of movs) {
+    const f = (m.formula || "").toString().trim();
+    if (m.tipo === "recebimento" && m.membroId) {
+      const k = m.membroId + "||" + f;
+      if (!grupos[k]) grupos[k] = {
+        donorId: m.membroId,
+        formula: f,
+        lots: [],
+        doado: 0
+      };
+      grupos[k].lots.push({
+        qtd: Number(m.quantidade),
+        validade: m.validade ? String(m.validade).slice(0, 10) : ""
+      });
+    } else if (m.tipo === "repasse" && m.doadorId) {
+      const k = m.doadorId + "||" + f;
+      if (!grupos[k]) grupos[k] = {
+        donorId: m.doadorId,
+        formula: f,
+        lots: [],
+        doado: 0
+      };
+      grupos[k].doado += Number(m.quantidade);
+    }
+  }
+  const alertas = [];
+  for (const k in grupos) {
+    const g = grupos[k];
+    const lots = g.lots.slice().sort((a, b) => {
+      if (a.validade && b.validade) return a.validade.localeCompare(b.validade);
+      if (a.validade) return -1;
+      if (b.validade) return 1;
+      return 0;
+    });
+    let restante = g.doado; // consome as doações dos lotes que vencem primeiro
+    for (const lot of lots) {
+      if (restante <= 0) break;
+      const usa = Math.min(lot.qtd, restante);
+      lot.qtd -= usa;
+      restante -= usa;
+    }
+    for (const lot of lots) {
+      if (lot.qtd > 0 && lot.validade) {
+        const d = diasAte(lot.validade);
+        if (d !== null && d <= lim) {
+          alertas.push({
+            donor: nomeDe(g.donorId),
+            formula: g.formula,
+            qtd: lot.qtd,
+            validade: lot.validade,
+            dias: d
+          });
+        }
+      }
+    }
+  }
+  return alertas.sort((a, b) => a.dias - b.dias);
+}
 function saldosPorDoador(movs) {
   const mapa = {}; // id -> { formula -> { qtd, vencs:[] } }
   const push = (id, formula, dq, venc) => {
