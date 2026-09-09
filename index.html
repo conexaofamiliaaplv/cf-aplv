@@ -607,7 +607,7 @@ function App() {
   };
   const confirmarInformado = (payload, item) => {
     if (payload.novoMembro) opMembro(payload.novoMembro);
-    if (payload.mov) opMov(payload.mov);
+    (payload.movs || []).forEach(m => opMov(m));
     opInformado(item.id, "confirmado");
   };
   const opOferta = (id, novoStatus) => {
@@ -1658,6 +1658,54 @@ function Membros({
 }
 
 /* =============================== MOVIMENTAÇÕES =============================== */
+function complementar(m, item) {
+  const preenche = (atual, novo) => novo && String(novo).trim() && (!atual || !String(atual).trim()) ? String(novo).trim() : atual;
+  const upd = {
+    ...m
+  };
+  upd.contato = preenche(m.contato, item.contato);
+  upd.bairro = preenche(m.bairro, item.bairro);
+  upd.cidade = preenche(m.cidade, item.cidade);
+  upd.estado = preenche(m.estado, item.estado);
+  upd.formula = preenche(m.formula, item.formula);
+  const nomeNovo = (item.nome || "").trim();
+  const p1 = (m.nome || "").trim().split(/\s+/)[0].toLowerCase();
+  if (nomeNovo && nomeNovo.length > (m.nome || "").trim().length && (!p1 || nomeNovo.toLowerCase().indexOf(p1) >= 0)) upd.nome = nomeNovo;
+  const mudou = ["nome", "contato", "bairro", "cidade", "estado", "formula"].some(k => (upd[k] || "") !== (m[k] || ""));
+  return mudou ? upd : null;
+}
+function statusRetiradas(movs) {
+  // total confirmado (entregas) por doadora||fórmula
+  const conf = {};
+  for (const m of movs) {
+    if (m.tipo === "entrega") {
+      const k = (m.doadorId || "") + "||" + (m.formula || "").toString().trim();
+      conf[k] = (conf[k] || 0) + Number(m.quantidade);
+    }
+  }
+  // doações (repasses) por doadora||fórmula
+  const grupos = {};
+  for (const r of movs) {
+    if (r.tipo !== "repasse") continue;
+    const k = (r.doadorId || "") + "||" + (r.formula || "").toString().trim();
+    (grupos[k] = grupos[k] || []).push(r);
+  }
+  const status = {};
+  for (const k in grupos) {
+    let pool = conf[k] || 0;
+    const arr = grupos[k].slice().sort((a, b) => (a.data + a.id).localeCompare(b.data + b.id));
+    for (const r of arr) {
+      const q = Number(r.quantidade);
+      if (q > 0 && pool >= q) {
+        status[r.id] = "confirmada";
+        pool -= q;
+      } else {
+        status[r.id] = "aguardando";
+      }
+    }
+  }
+  return status;
+}
 function Movimentacoes({
   membros,
   movs,
@@ -1668,12 +1716,14 @@ function Movimentacoes({
   const [form, setForm] = useState(null);
   const [confirmar, setConfirmar] = useState(null);
   const nomeDe = id => (membros.find(x => x.id === id) || {}).nome || "—";
+  const status = statusRetiradas(movs);
   const mapaFiltro = {
-    recebimentos: "recebimento",
-    entregas: "entrega",
-    repasses: "repasse"
+    recebimentos: "recebimento"
   };
-  const lista = movs.filter(m => filtro === "todas" || m.tipo === mapaFiltro[filtro]).sort((a, b) => (b.data + b.id).localeCompare(a.data + a.id));
+  const lista = (filtro === "retiradas" ? movs.filter(m => m.tipo === "repasse") : movs.filter(m => filtro === "todas" || m.tipo === mapaFiltro[filtro])).sort((a, b) => (b.data + b.id).localeCompare(a.data + a.id));
+  const repassesTodos = movs.filter(m => m.tipo === "repasse");
+  const nConfirmadas = repassesTodos.filter(m => status[m.id] === "confirmada").length;
+  const nAguardando = repassesTodos.length - nConfirmadas;
   const abrir = tipo => setForm({
     id: null,
     tipo,
@@ -1746,7 +1796,7 @@ function Movimentacoes({
       borderRadius: 10,
       padding: 3
     }
-  }, [["todas", "Todas"], ["recebimentos", "Recebimentos"], ["entregas", "Entregas"], ["repasses", "Repasses"]].map(([id, nome]) => /*#__PURE__*/React.createElement("button", {
+  }, [["todas", "Todas"], ["recebimentos", "Recebimentos"], ["retiradas", "Retiradas"]].map(([id, nome]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     onClick: () => setFiltro(id),
     style: {
@@ -1792,7 +1842,56 @@ function Movimentacoes({
     }
   }, /*#__PURE__*/React.createElement(ArrowLeftRight, {
     size: 16
-  }), " Repasse direto")), membros.length === 0 && /*#__PURE__*/React.createElement("div", {
+  }), " Repasse direto")), filtro === "retiradas" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10,
+      marginBottom: 14,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 150,
+      background: c.inSoft,
+      border: "1px solid #CFE0C7",
+      borderRadius: 12,
+      padding: "10px 14px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: c.in,
+      fontWeight: 700
+    }
+  }, "Retiradas confirmadas"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 24,
+      fontWeight: 800,
+      color: c.in
+    }
+  }, nConfirmadas)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 150,
+      background: c.amberSoft,
+      border: "1px solid #EAD9A6",
+      borderRadius: 12,
+      padding: "10px 14px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: c.amber,
+      fontWeight: 700
+    }
+  }, "Aguardando retirada"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 24,
+      fontWeight: 800,
+      color: c.amber
+    }
+  }, nAguardando))), membros.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       background: c.amberSoft,
       border: "1px solid #EAD9A6",
@@ -1823,13 +1922,14 @@ function Movimentacoes({
     const cor = corMov(m);
     const soft = m.tipo === "recebimento" ? c.inSoft : m.tipo === "entrega" ? c.outSoft : c.linkSoft;
     const dias = diasAte(m.validade);
+    const ret = m.tipo === "repasse" ? status[m.id] : null;
     const descricao = m.tipo === "repasse" ? `${nomeDe(m.doadorId)} → ${nomeDe(m.recebedorId)}` : `${m.tipo === "recebimento" ? "de" : "para"} ${nomeDe(m.membroId)}`;
     return /*#__PURE__*/React.createElement("div", {
       key: m.id,
       style: {
         display: "flex",
         alignItems: "center",
-        gap: 12,
+        gap: 10,
         padding: "13px 16px",
         borderTop: i ? `1px solid ${c.line}` : "none"
       }
@@ -1861,11 +1961,45 @@ function Movimentacoes({
         fontSize: 12.5,
         color: c.muted
       }
-    }, descricao, " · ", fmtData(m.data), m.validade && /*#__PURE__*/React.createElement("span", {
+    }, descricao, " · ", fmtData(m.data), m.validade && m.tipo !== "repasse" && /*#__PURE__*/React.createElement("span", {
       style: {
         color: dias !== null && dias <= 45 ? c.amber : c.muted
       }
-    }, " · val. ", fmtData(m.validade)), m.obs && /*#__PURE__*/React.createElement("span", null, " · ", m.obs))), /*#__PURE__*/React.createElement("button", {
+    }, " · val. ", fmtData(m.validade)), m.obs && /*#__PURE__*/React.createElement("span", null, " · ", m.obs)), ret && /*#__PURE__*/React.createElement("span", {
+      style: {
+        display: "inline-block",
+        marginTop: 4,
+        fontSize: 11,
+        fontWeight: 700,
+        padding: "2px 8px",
+        borderRadius: 20,
+        background: ret === "confirmada" ? c.inSoft : c.amberSoft,
+        color: ret === "confirmada" ? c.in : c.amber
+      }
+    }, ret === "confirmada" ? "✓ Retirada confirmada" : "Aguardando retirada")), ret === "aguardando" && /*#__PURE__*/React.createElement("button", {
+      title: "Confirmar retirada",
+      onClick: () => onSave({
+        id: uid(),
+        tipo: "entrega",
+        membroId: m.recebedorId || "",
+        doadorId: m.doadorId || "",
+        recebedorId: "",
+        formula: m.formula,
+        quantidade: m.quantidade,
+        validade: "",
+        data: hoje(),
+        obs: "Retirada confirmada"
+      }),
+      style: {
+        ...btnMini,
+        color: c.in,
+        borderColor: "#CFE0C7",
+        whiteSpace: "nowrap",
+        padding: "6px 9px"
+      }
+    }, /*#__PURE__*/React.createElement(Check, {
+      size: 13
+    }), " Retirada"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setForm(m),
       style: iconBtn
     }, /*#__PURE__*/React.createElement(Pencil, {
@@ -2136,23 +2270,62 @@ function ConfirmarInformado({
     rotulo: "— externa (não abater)"
   }];
   const abate = darBaixa && doadoraId && doadoraId !== EXTERNA;
-  const desab = darBaixa && (!formula.trim() || !quantidade || !doadoraId);
+  const desab = !formula.trim() || !quantidade || darBaixa && !doadoraId;
   const salvar = () => {
     if (desab) return;
-    const mov = abate ? {
+    let familiaId,
+      novoMembro = null;
+    if (matchReceb) {
+      familiaId = matchReceb.id;
+      novoMembro = complementar(matchReceb, item); // preenche o que faltava (ou null se nada mudou)
+    } else {
+      familiaId = uid();
+      novoMembro = {
+        id: familiaId,
+        nome: item.nome || "Família",
+        contato: item.contato || "",
+        bairro: item.bairro || "",
+        cidade: item.cidade || "",
+        estado: item.estado || "",
+        tipo: "Recebedor",
+        crianca: "",
+        formula: formula.trim(),
+        obs: "",
+        criadoEm: hoje()
+      };
+    }
+    const lista = [];
+    // registro de ENTREGA (a família recebeu) — aparece em Movimentações → Entregas, sem mexer no estoque
+    lista.push({
       id: uid(),
-      tipo: "repasse",
-      membroId: "",
-      doadorId: doadoraId,
-      recebedorId: matchReceb ? matchReceb.id : "",
+      tipo: "entrega",
+      membroId: familiaId,
+      doadorId: matchDoadora ? matchDoadora.id : "",
+      recebedorId: "",
       formula: formula.trim(),
       quantidade: Number(quantidade),
       validade: "",
       data,
-      obs: matchReceb ? "" : `Recebido por ${item.nome}`
-    } : null;
+      obs: item.deQuem ? `Doadora tel. ${item.deQuem}` : ""
+    });
+    // baixa opcional (caso ainda não tenha registrado a doação)
+    if (abate) {
+      lista.push({
+        id: uid(),
+        tipo: "repasse",
+        membroId: "",
+        doadorId: doadoraId,
+        recebedorId: familiaId,
+        formula: formula.trim(),
+        quantidade: Number(quantidade),
+        validade: "",
+        data,
+        obs: ""
+      });
+    }
     onConfirmar({
-      mov
+      novoMembro,
+      movs: lista
     });
   };
   return /*#__PURE__*/React.createElement(Modal, {
