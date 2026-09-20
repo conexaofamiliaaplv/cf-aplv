@@ -638,8 +638,12 @@ function App() {
     try {
       const res = await chamarAPI(novo, "pull");
       if (res && res.ok) {
-        gravarJSON(CFG_KEY, novo);
-        setCfg(novo);
+        const cfgRole = {
+          ...novo,
+          role: res.role || "admin"
+        };
+        gravarJSON(CFG_KEY, cfgRole);
+        setCfg(cfgRole);
         aplicarSnapshot(res);
         setStatus("ok");
         return {
@@ -697,6 +701,10 @@ function App() {
     nome: "Ofertas",
     icon: Gift
   }];
+  const role = cfg && cfg.role || "admin";
+  const colab = role === "colab";
+  const abasVisiveis = colab ? abas.filter(a => a.id === "membros" || a.id === "doadores") : abas;
+  const abaAtual = abasVisiveis.find(a => a.id === aba) ? aba : abasVisiveis[0].id;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       background: c.bg,
@@ -761,7 +769,18 @@ function App() {
       letterSpacing: -0.3,
       lineHeight: 1.15
     }
-  }, "Doações de Fórmula"), /*#__PURE__*/React.createElement("div", {
+  }, "Doações de Fórmula", colab ? /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      background: "#ffffff26",
+      color: c.pink,
+      padding: "2px 8px",
+      borderRadius: 20,
+      marginLeft: 8,
+      verticalAlign: "middle"
+    }
+  }, "Colaboradora") : null), /*#__PURE__*/React.createElement("div", {
     style: {
       fontFamily: "'Dancing Script', cursive",
       fontSize: 18,
@@ -778,8 +797,8 @@ function App() {
       position: "relative",
       overflowX: "auto"
     }
-  }, abas.map(a => {
-    const ativo = aba === a.id;
+  }, abasVisiveis.map(a => {
+    const ativo = abaAtual === a.id;
     const Ic = a.icon;
     const n = badges[a.id] || 0;
     return /*#__PURE__*/React.createElement("button", {
@@ -843,24 +862,26 @@ function App() {
     pend: pend.length,
     onAtualizar: sincronizar,
     onSair: sair
-  }), aba === "painel" ? /*#__PURE__*/React.createElement(Painel, {
+  }), abaAtual === "painel" ? /*#__PURE__*/React.createElement(Painel, {
     membros: membros,
     movs: movs,
     irPara: setAba
-  }) : aba === "doadores" ? /*#__PURE__*/React.createElement(Doadores, {
+  }) : abaAtual === "doadores" ? /*#__PURE__*/React.createElement(Doadores, {
     membros: membros,
     movs: movs,
-    onMov: opMov
-  }) : aba === "membros" ? /*#__PURE__*/React.createElement(Membros, {
+    onMov: opMov,
+    podeAddLatas: !colab
+  }) : abaAtual === "membros" ? /*#__PURE__*/React.createElement(Membros, {
     membros: membros,
     onSave: opMembro,
-    onDelete: delMembro
-  }) : aba === "movimentacoes" ? /*#__PURE__*/React.createElement(Movimentacoes, {
+    onDelete: delMembro,
+    podeExcluir: !colab
+  }) : abaAtual === "movimentacoes" ? /*#__PURE__*/React.createElement(Movimentacoes, {
     membros: membros,
     movs: movs,
     onSave: opMov,
     onDelete: delMov
-  }) : aba === "informados" ? /*#__PURE__*/React.createElement(Informados, {
+  }) : abaAtual === "informados" ? /*#__PURE__*/React.createElement(Informados, {
     informados: informados,
     membros: membros,
     movs: movs,
@@ -1351,7 +1372,8 @@ const TIPOS = ["Recebedor", "Doador", "Ambos"];
 function Membros({
   membros,
   onSave,
-  onDelete
+  onDelete,
+  podeExcluir = true
 }) {
   const [busca, setBusca] = useState("");
   const [form, setForm] = useState(null);
@@ -1520,7 +1542,7 @@ function Membros({
     style: btnMini
   }, /*#__PURE__*/React.createElement(Pencil, {
     size: 13
-  }), " Editar"), /*#__PURE__*/React.createElement("button", {
+  }), " Editar"), podeExcluir && /*#__PURE__*/React.createElement("button", {
     onClick: () => setConfirmar(m),
     style: {
       ...btnMini,
@@ -2776,7 +2798,8 @@ function saldosPorDoador(movs) {
 function Doadores({
   membros,
   movs,
-  onMov
+  onMov,
+  podeAddLatas = true
 }) {
   const [busca, setBusca] = useState("");
   const [soComLatas, setSoComLatas] = useState(true);
@@ -3013,7 +3036,7 @@ function Doadores({
     }
   }, /*#__PURE__*/React.createElement(ArrowUpCircle, {
     size: 14
-  }), " Registrar doação"), /*#__PURE__*/React.createElement("button", {
+  }), " Registrar doação"), podeAddLatas && /*#__PURE__*/React.createElement("button", {
     onClick: () => setAdd(m),
     style: btnMini
   }, /*#__PURE__*/React.createElement(Plus, {
