@@ -29,7 +29,8 @@ const {
   useState,
   useMemo,
   useEffect,
-  useCallback
+  useCallback,
+  useRef
 } = React;
 
 /* ---------------------------- ícones (SVG inline) ---------------------------- */
@@ -467,25 +468,42 @@ function App() {
     gravarJSON(CACHE.informados, is);
     gravarJSON(CACHE.ofertas, os);
   }, []);
+  const flushing = useRef(false);
   const flush = useCallback(async () => {
     if (!cfg) return true;
-    let fila = lerJSON(PEND, []);
-    while (fila.length) {
-      let r;
-      try {
-        r = await chamarAPI(cfg, fila[0].action, fila[0].payload);
-      } catch (e) {
-        return false;
-      } // sem conexão — mantém a fila
-      if (r && r.error === "senha") {
-        setErroMsg("Senha incorreta.");
-        return false;
+    // Single-flight: só uma drenagem por vez. Se já há uma rodando, ela vai
+    // pegar os itens recém-enfileirados (relê a fila a cada passo).
+    if (flushing.current) return true;
+    flushing.current = true;
+    try {
+      while (true) {
+        const fila = lerJSON(PEND, []);
+        if (!fila.length) return true;
+        const item = fila[0];
+        let r;
+        try {
+          r = await chamarAPI(cfg, item.action, item.payload);
+        } catch (e) {
+          return false;
+        } // sem conexão — mantém a fila intacta
+        if (r && r.error === "senha") {
+          setErroMsg("Senha incorreta.");
+          return false;
+        }
+        // "permissao" = ação que este perfil nunca poderá fazer: descarta para não travar a fila.
+        // Remove SEMPRE o item da fila mais atual (não de uma cópia velha), evitando perder comandos.
+        const atual = lerJSON(PEND, []);
+        if (atual.length && atual[0].opId === item.opId) {
+          atual.shift();
+        } else if (atual.length) {
+          atual.shift();
+        } // fallback: remove a cabeça
+        gravarJSON(PEND, atual);
+        setPend(atual);
       }
-      fila = fila.slice(1);
-      gravarJSON(PEND, fila);
-      setPend(fila);
+    } finally {
+      flushing.current = false;
     }
-    return true;
   }, [cfg]);
   const sincronizar = useCallback(async () => {
     if (!cfg) return;
@@ -520,7 +538,10 @@ function App() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [sincronizar]);
   const enfileirar = op => {
-    const nv = [...lerJSON(PEND, []), op];
+    const nv = [...lerJSON(PEND, []), {
+      ...op,
+      opId: uid()
+    }];
     gravarJSON(PEND, nv);
     setPend(nv);
   };
@@ -702,8 +723,14 @@ function App() {
     icon: Gift
   }];
   const role = cfg && cfg.role || "admin";
-  const colab = role === "colab";
-  const abasVisiveis = colab ? abas.filter(a => a.id === "membros" || a.id === "doadores") : abas;
+  const colab = role === "colab" || role === "colab2"; // qualquer colaboradora (esconde Excluir / +Latas)
+  const seloPapel = role === "colab2" ? "Direcionamento" : role === "colab" ? "Colaboradora" : null;
+  const abasPorPapel = {
+    colab: ["membros", "doadores"],
+    colab2: ["doadores", "membros", "movimentacoes", "ofertas"]
+  };
+  const permitidas = abasPorPapel[role];
+  const abasVisiveis = permitidas ? abas.filter(a => permitidas.indexOf(a.id) >= 0) : abas;
   const abaAtual = abasVisiveis.find(a => a.id === aba) ? aba : abasVisiveis[0].id;
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -769,7 +796,7 @@ function App() {
       letterSpacing: -0.3,
       lineHeight: 1.15
     }
-  }, "Doações de Fórmula", colab ? /*#__PURE__*/React.createElement("span", {
+  }, "Doações de Fórmula", seloPapel ? /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11,
       fontWeight: 700,
@@ -780,7 +807,7 @@ function App() {
       marginLeft: 8,
       verticalAlign: "middle"
     }
-  }, "Colaboradora") : null), /*#__PURE__*/React.createElement("div", {
+  }, seloPapel) : null), /*#__PURE__*/React.createElement("div", {
     style: {
       fontFamily: "'Dancing Script', cursive",
       fontSize: 18,
@@ -1388,6 +1415,8 @@ function Membros({
     estado: "",
     tipo: "Recebedor",
     crianca: "",
+    nascimento: "",
+    situacao: "",
     formula: "",
     obs: ""
   });
@@ -1518,7 +1547,7 @@ function Membros({
     }
   }, /*#__PURE__*/React.createElement(Baby, {
     size: 13
-  }), " ", m.crianca), m.formula && /*#__PURE__*/React.createElement("span", {
+  }), " ", m.crianca, m.nascimento ? ` · ${fmtData(m.nascimento)}` : ""), m.formula && /*#__PURE__*/React.createElement("span", {
     style: {
       display: "flex",
       alignItems: "center",
@@ -1526,7 +1555,18 @@ function Membros({
     }
   }, /*#__PURE__*/React.createElement(Package, {
     size: 13
-  }), " ", m.formula), m.obs && /*#__PURE__*/React.createElement("span", {
+  }), " ", m.formula), m.situacao && /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-block",
+      fontSize: 11,
+      fontWeight: 700,
+      padding: "2px 8px",
+      borderRadius: 20,
+      background: c.amberSoft,
+      color: c.amber,
+      alignSelf: "flex-start"
+    }
+  }, m.situacao), m.obs && /*#__PURE__*/React.createElement("span", {
     style: {
       fontStyle: "italic",
       fontSize: 12.5
@@ -1624,8 +1664,14 @@ function Membros({
     }),
     opcoes: UFS,
     placeholder: "—"
-  }))), /*#__PURE__*/React.createElement(Campo, {
-    rotulo: "Criança (nome / idade)"
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Criança (nome / idade)",
+    flex: true
   }, /*#__PURE__*/React.createElement("input", {
     value: form.crianca,
     onChange: e => setForm({
@@ -1634,6 +1680,27 @@ function Membros({
     }),
     style: inputBase,
     placeholder: "Ex.: Helena, 8 meses"
+  })), /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Nascimento da criança",
+    flex: true
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: (form.nascimento || "").slice(0, 10),
+    onChange: e => setForm({
+      ...form,
+      nascimento: e.target.value
+    }),
+    style: inputBase
+  }))), /*#__PURE__*/React.createElement(Campo, {
+    rotulo: "Situação / motivo"
+  }, /*#__PURE__*/React.createElement("input", {
+    value: form.situacao || "",
+    onChange: e => setForm({
+      ...form,
+      situacao: e.target.value
+    }),
+    style: inputBase,
+    placeholder: "Ex.: Aguardando o Alto Custo"
   })), /*#__PURE__*/React.createElement(Campo, {
     rotulo: "Fórmula de interesse"
   }, /*#__PURE__*/React.createElement(Select, {
